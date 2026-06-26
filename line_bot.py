@@ -54,7 +54,11 @@ bot_state = {
     "user_id": None,
     "trades_today": 0,
     "profit_today": 0.0,
+    "peak_profit": {},  # pos_id -> กำไรสูงสุดที่เคยขึ้นไป (สำหรับ trailing lock)
 }
+
+TRAIL_ARM      = 1.0  # กำไรขั้นต่ำ ($) ที่ต้องถึงก่อนจะเริ่มจับยอด (arm trailing)
+TRAIL_GIVEBACK = 0.5  # ถ้ากำไรย้อนลงจากยอดสูงสุดเกินนี้ ($) จะปิดออกทันที
 
 app = Flask(__name__)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
@@ -226,15 +230,32 @@ async def bot_loop():
                 if profit <= -sl:
                     await conn.close_position(pos_id)
                     bot_state["profit_today"] += profit
+                    bot_state["peak_profit"].pop(pos_id, None)
                     send_line(user_id,
                         f"🔴 SL HIT!\n"
                         f"ขาดทุน: ${abs(profit):.2f}\n"
+                        f"ปิด Order {pos_id} แล้ว")
+                    continue
+
+                peak = bot_state["peak_profit"].get(pos_id, profit)
+                peak = max(peak, profit)
+                bot_state["peak_profit"][pos_id] = peak
+
+                if peak >= TRAIL_ARM and (peak - profit) >= TRAIL_GIVEBACK:
+                    await conn.close_position(pos_id)
+                    bot_state["profit_today"] += profit
+                    bot_state["trades_today"] += 1
+                    bot_state["peak_profit"].pop(pos_id, None)
+                    send_line(user_id,
+                        f"🟢 TRAILING HIT!\n"
+                        f"กำไรสูงสุด: ${peak:.2f} → ปิดที่: ${profit:.2f}\n"
                         f"ปิด Order {pos_id} แล้ว")
 
                 elif profit >= tp:
                     await conn.close_position(pos_id)
                     bot_state["profit_today"] += profit
                     bot_state["trades_today"] += 1
+                    bot_state["peak_profit"].pop(pos_id, None)
                     send_line(user_id,
                         f"🟢 TP HIT!\n"
                         f"กำไร: ${profit:.2f}\n"
@@ -315,6 +336,7 @@ def handle_command(user_id: str, text: str):
         bot_state["user_id"] = user_id
         bot_state["trades_today"] = 0
         bot_state["profit_today"] = 0.0
+        bot_state["peak_profit"] = {}
         t = threading.Thread(target=start_bot_thread, daemon=True)
         t.start()
         return "🔄 รับคำสั่ง /start แล้ว\nกำลังเชื่อมต่อ MT5 จะแจ้งผลให้ทราบครับ"
