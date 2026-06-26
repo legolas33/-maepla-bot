@@ -268,30 +268,32 @@ async def bot_loop():
 
             open_positions = [p for p in positions if p.get('symbol') == SYMBOL]
             if len(open_positions) < 3:   # จำกัด max 3 order พร้อมกัน
+                candles_m5 = await conn.get_historical_candles(
+                    SYMBOL, '5m', datetime.utcnow(), 10)
+                MIN_SCORE = 2  # อ้างอิงแผน 3 ข้อ แต่ไม่ต้องเป๊ะครบ — เข้าถ้าตรงอย่างน้อย 2/3
 
                 sig_buy = detect_pa_buy(candles_h4)
-                if sig_buy and is_nayya_level(current_price):
-                    candles_m5 = await conn.get_historical_candles(
-                        SYMBOL, '5m', datetime.utcnow(), 10)
-                    if detect_m5_buy(candles_m5):
+                nayya = is_nayya_level(current_price)
+                m5_buy = detect_m5_buy(candles_m5)
+                buy_score = sum([bool(sig_buy), nayya, m5_buy])
+                if buy_score >= MIN_SCORE:
                         await conn.create_market_buy_order(
                             SYMBOL, bot_state["lot"])
                         send_line(user_id,
-                            f"🟢 เปิด BUY!\n"
+                            f"🟢 เปิด BUY! ({buy_score}/3)\n"
                             f"สัญญาณ: Sig Buy {sig_buy}\n"
                             f"ราคา: {current_price:.2f}\n"
                             f"Lot: {bot_state['lot']}\n"
                             f"SL: ${bot_state['sl']} | TP: ${bot_state['tp']}")
 
                 sig_sell = detect_pa_sell(candles_h4)
-                if sig_sell and is_nayya_level(current_price):
-                    candles_m5 = await conn.get_historical_candles(
-                        SYMBOL, '5m', datetime.utcnow(), 10)
-                    if detect_m5_sell(candles_m5):
+                m5_sell = detect_m5_sell(candles_m5)
+                sell_score = sum([bool(sig_sell), nayya, m5_sell])
+                if sell_score >= MIN_SCORE:
                         await conn.create_market_sell_order(
                             SYMBOL, bot_state["lot"])
                         send_line(user_id,
-                            f"🔴 เปิด SELL!\n"
+                            f"🔴 เปิด SELL! ({sell_score}/3)\n"
                             f"สัญญาณ: Sig Sell {sig_sell}\n"
                             f"ราคา: {current_price:.2f}\n"
                             f"Lot: {bot_state['lot']}\n"
