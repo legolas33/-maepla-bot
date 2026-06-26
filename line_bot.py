@@ -22,7 +22,10 @@ from datetime import datetime
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import (
+    MessageEvent, TextMessage, TextSendMessage,
+    QuickReply, QuickReplyButton, MessageAction,
+)
 from metaapi_cloud_sdk import MetaApi
 
 # ─────────────────────────────────────
@@ -60,6 +63,19 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 # ─────────────────────────────────────
 #  📤 ส่งข้อความกลับ Line (push)
 # ─────────────────────────────────────
+def menu_quick_reply():
+    buttons = [
+        ("▶️ Start", "/start"),
+        ("⏹ Stop", "/stop"),
+        ("📊 Status", "/status"),
+        ("🛑 Close All", "/closeall"),
+        ("❓ Help", "/help"),
+    ]
+    return QuickReply(items=[
+        QuickReplyButton(action=MessageAction(label=label, text=cmd))
+        for label, cmd in buttons
+    ])
+
 def send_line(user_id: str, msg: str):
     if not user_id:
         return
@@ -438,16 +454,23 @@ def health():
 def handle_message(event):
     user_id = event.source.user_id
     text = event.message.text
+
     if not text.startswith('/'):
-        return
-    try:
-        reply = handle_command(user_id, text)
-    except Exception as e:
-        reply = f"❌ เกิดข้อผิดพลาด: {e}"
-        print("handle_command error:\n" + traceback.format_exc())
+        if text.strip() in ("เมนู", "menu", "คำสั่ง"):
+            reply = "🐟 เลือกคำสั่งจากปุ่มด้านล่างได้เลยครับ"
+        else:
+            return
+    else:
+        try:
+            reply = handle_command(user_id, text)
+        except Exception as e:
+            reply = f"❌ เกิดข้อผิดพลาด: {e}"
+            print("handle_command error:\n" + traceback.format_exc())
+
+    message = TextSendMessage(text=reply, quick_reply=menu_quick_reply())
     # reply ก่อน ถ้า token หมดอายุค่อย fallback ไป push
     try:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+        line_bot_api.reply_message(event.reply_token, message)
     except Exception as e:
         print(f"reply error -> fallback push: {e}")
         send_line(user_id, reply)
