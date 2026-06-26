@@ -98,8 +98,11 @@ def run_on_bot_loop(coro, timeout=20):
 # ─────────────────────────────────────
 #  📊 PA Detection (จากระบบปากกาเขียว)
 # ─────────────────────────────────────
+NAYYA_TOLERANCE = 1.0  # ระยะห่างที่ยอมรับได้จากหลักห้าที่ใกล้ที่สุด ($) — เดิมเทียบเท่า 0.5
+
 def is_nayya_level(price):
-    return round(price) % 5 == 0
+    nearest_5 = round(price / 5) * 5
+    return abs(price - nearest_5) <= NAYYA_TOLERANCE
 
 def detect_pa_buy(candles):
     if len(candles) < 3:
