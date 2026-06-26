@@ -1,0 +1,4 @@
+flask
+line-bot-sdk
+metaapi-cloud-sdk
+python-dotenv
